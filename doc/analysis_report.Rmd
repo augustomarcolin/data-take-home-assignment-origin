@@ -1,0 +1,352 @@
+---
+title: "Take Home Assignment - Origin Financial"
+author: "Augusto Marcolin"
+date: "July 19, 2021"
+output: rmdformats::"readthedown"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, echo = FALSE)
+
+library(dplyr)
+library(tidyr)
+library(stringr)
+library(forcats)
+library(testthat)
+library(skimr)
+library(ggplot2)
+library(usmap)
+library(leaflet)
+library(knitr)
+library(kableExtra)
+library(corrplot)
+#---- reading data ----
+
+#raw
+raw_users_db <- read.csv('../data/raw/users.csv') %>% 
+  as_tibble()
+
+raw_transaction_db <- read.csv('../data/raw/transactions.csv') %>% 
+  as_tibble()
+
+#clean
+
+db_users <- readRDS('../data/processed/user_db.RDS') %>% 
+  mutate(
+    age_at = lubridate::time_length(difftime(created_at, date_of_birth), "years") #extracting age
+  )
+
+db_transactions <- readRDS('../data/processed/transaction_db.RDS')
+
+# shapfile states
+states <- tigris::states(cb=T)
+
+db_train <- readRDS('../data/processed/db_train.RDS')
+
+```
+
+# Overview
+
+# Introduction
+
+# Engineering Raw Data
+
+Before starting the data analysis, let's do a quickly review at available data sets and raise needs of pre-engineering.
+
+## Customers
+
+```{r}
+glimpse(raw_users_db)
+```
+
+In a quick overview, it's possibly to note that variable `created_at` and `date_of_birth` should be modified to timestamp and date. Also, we can note that all missing data are represented by empty space and it will be replaced by `NA`.
+
+The variables `state` and `city` has some strange characters like this: `<img src='#' onerror=alert('xss') />` this strange behavior probably came from a css operator and it will be replaced by `NA`.
+
+## Transactions
+
+```{r}
+glimpse(raw_transaction_db)
+```
+
+# Exploratory Data Analysis
+
+```{r}
+skim(db_users)
+```
+
+-   falar sobre o outlier na data
+-   falar sobre o número de missing no gender
+
+## Univariate Analysis
+
+### Age
+
+```{r}
+db_users %>% 
+  filter(age_at <= 100) %>% 
+  ggplot(aes(x = age_at)) +
+  geom_density(fill = '#ed2f5b', alpha = 0.6) +
+  theme_bw()
+```
+
+### State
+
+```{r}
+
+merge_db <- db_users %>% 
+  count(state) %>% 
+  mutate(
+    perc = round(n / sum(n) * 100, digits = 2)
+  ) %>% 
+  arrange(desc(n)) %>% 
+  right_join(states, by = c("state" = "STUSPS")) %>% 
+  sf::st_as_sf() %>% 
+  mutate(
+    label = sprintf("State: %s
+                    Percent: %s", state,perc)
+  )
+
+pal <- colorNumeric("Reds", domain=merge_db$perc)
+
+
+leaflet() %>% 
+  addProviderTiles("CartoDB.Positron") %>%
+  setView(-98.483330, 38.712046, zoom = 4) %>% 
+  addPolygons(data = merge_db , 
+              label = ~label,
+              fillColor = ~pal(merge_db$perc), 
+              fillOpacity = 0.7, 
+              weight = 0.2, 
+              smoothFactor = 0.2,
+              highlightOptions = highlightOptions(color        = "white",
+                                                  weight       = 2,
+                                                  bringToFront = TRUE)) %>%
+  addLegend(pal = pal, 
+            values = merge_db$perc, 
+            position = "bottomright", 
+            title = "Household %")
+
+```
+
+-   talk about: more than half of the sample is from CA or has no available state
+
+## Users Transactions
+
+-   talk that we have just 84 customer with transactions
+
+```{r}
+db_transactions %>% 
+  select(user_id, account_id) %>% 
+  distinct() %>% 
+  count(user_id, sort = T) %>% 
+  count(n) %>% 
+  mutate(
+    perc = round(nn / sum(nn), digits = 4) * 100
+  ) %>% 
+  kable(col.names = c("Number of Accounts", "Number of Customers", "% of Customers")) %>% 
+  kable_styling()
+
+```
+
+-   falar que quase 20% dos customers com transacoes tem mais de uma conta, porem para as analises vou assumir apenas o id do customer
+
+### Type of transacions
+
+```{r}
+db_transactions %>% 
+  count(type) %>% 
+  mutate(
+    perc = n / sum(n) 
+  ) %>% 
+  arrange(desc(n))  %>% 
+  ggplot(aes(x = type, y = perc, label = scales::percent(perc))) +
+  geom_bar(stat = 'identity', fill = '#ed2f5b') +
+  scale_y_continuous(labels = scales::percent, limits = c(0, 1)) +
+  labs(x = 'Transaction Type', y = "Percent") +
+  geom_text(position = position_dodge(width = .9), vjust = -0.5, size = 4) +
+  theme_bw()
+```
+
+-   falar que tem uma mistura de gastos e salários com transferências e que isso deveria ser visto apartado
+-   começar a falar da ideia do rfm
+
+### Transactions Category
+
+```{r}
+db_transactions %>% 
+  select(starts_with("extra_fields_category")) %>% 
+  group_by_all() %>% 
+  count(sort = T)  %>% 
+  mutate(
+    perc = round(n/sum(n), digits = 4) * 100
+  ) %>% 
+  kable() %>% 
+  kable_styling()
+
+```
+
+-   Falar um pouco sobre as categorias e que sera explorado um pouco mais na descritiva com a quantidade de transacoes e amount
+
+### Merchant Name
+
+```{r}
+#----- *** extra_field merchant name ----
+
+db_transactions %>% 
+  filter(type == 'expense') %>% 
+  count(extra_fields_merchant_name, sort = T) %>% 
+  mutate(
+    perc = round(n / sum(n) , digits = 2),
+    extra_fields_merchant_name = fct_reorder(as_factor(extra_fields_merchant_name), perc, .desc = T), 
+  ) %>% 
+  arrange(desc(n))  %>% 
+  ggplot(aes(x = extra_fields_merchant_name, y = perc, label = scales::percent(perc))) +
+  geom_bar(stat = 'identity', fill = '#ed2f5b') +
+  scale_y_continuous(labels = scales::percent, limits = c(0, 1)) +
+  labs(x = 'Transaction Type', y = "Percent") +
+  geom_text(position = position_dodge(width = .9), vjust = -0.5, size = 4) +
+  theme_bw()
+
+```
+
+- Falar que temos os dados apenas para expense
+
+### Channel Transactions
+
+```{r}
+db_transactions %>% 
+  filter(type == 'expense') %>% 
+  count(extra_fields_payment_channel, sort = T) %>% 
+  mutate(
+    perc = round(n / sum(n) , digits = 2),
+    extra_fields_payment_channel = fct_reorder(as_factor(extra_fields_payment_channel), perc, .desc = T)
+  ) %>% 
+  arrange(desc(n))  %>% 
+  ggplot(aes(x = extra_fields_payment_channel, y = perc, label = scales::percent(perc))) +
+  geom_bar(stat = 'identity', fill = '#ed2f5b') +
+  scale_y_continuous(labels = scales::percent, limits = c(0, 1)) +
+  labs(x = 'Transaction Type', y = "Percent") +
+  geom_text(position = position_dodge(width = .9), vjust = -0.5, size = 4) +
+  theme_bw()
+```
+
+- Falar que temos os dados apenas para expense
+
+### Payment Methods
+
+```{r}
+db_transactions %>% 
+  count(extra_fields_payment_meta_payment_method, sort = T) %>% 
+  mutate(
+    perc = round(n / sum(n) , digits = 2)
+  ) %>% 
+  arrange(desc(n))  %>% 
+  ggplot(aes(x = extra_fields_payment_meta_payment_method, y = perc, label = scales::percent(perc))) +
+  geom_bar(stat = 'identity', fill = '#ed2f5b') +
+  scale_y_continuous(labels = scales::percent, limits = c(0, 1)) +
+  labs(x = 'Transaction Type', y = "Percent") +
+  geom_text(position = position_dodge(width = .9), vjust = -0.5, size = 4) +
+  theme_bw()
+
+```
+
+- just 4% of transactions with this data, it's almost useless
+
+## RFM Transformation
+
+- Analisando o problema e vendo as possibilidades de cluster, optei pela transdormação dos dados trnsacionais para o modo recency, frequencia e monetary value. 
+
+A transformação foi feita pensando em duas abordagens... RFM dos tipos de transacao (expense, income, transfer) e RFM das categorias de expense.
+
+Depois da transformação dos dados transacionais, é hora de juntar com os dados dos usuarios.
+
+Ao final teremos um dataset com 84 customers e 36 variaveis e temos algumas ressalvas.
+
+```{r}
+glimpse(db_train)
+```
+### Expense vs Income
+```{r}
+db_train %>% 
+  ggplot(aes(x = amount_mean_expense, y = amount_mean_income)) + 
+  geom_jitter(color = '#ed2f5b', size = 2) +
+  theme_bw()
+
+```
+
+Aqui podemos notar que tem customer com alta renda e pouco gasto, sem renda e sem gasto, renda media e gasto medio e gasto alto e renda media. isso já é uma pista pro nosso cluster.
+
+também temos um outlier nos gastos
+
+### Expense Vs Income Vs Age
+```{r}
+db_train %>%
+  select(age_at, amount_mean_income, amount_mean_expense) %>% 
+  pivot_longer(cols = c(amount_mean_income, amount_mean_expense), names_to = 'amount', values_to = "value") %>% 
+  ggplot(aes(x = value, y = age_at)) + 
+  geom_point(color = '#ed2f5b', size = 2) +
+  facet_wrap(~amount) +
+  theme_bw()
+
+```
+
+A idade nao parece influenciar nos tipos de transacoes na base, quanto a salario e despesas.
+
+
+### Expense vs Income vs Transfer
+
+```{r}
+db_train %>%
+  select(amount_mean_transfer, amount_mean_income, amount_mean_expense) %>% 
+  pivot_longer(cols = c(amount_mean_income, amount_mean_expense), names_to = 'amount', values_to = "value") %>% 
+  ggplot(aes(x = value, y = amount_mean_transfer)) + 
+  geom_point(color = '#ed2f5b', size = 2) +
+  facet_wrap(~amount) +
+  theme_bw()
+
+```
+
+Os valores transferidos nao parecem ter relacao com os gastos e com a renda, alem de terem poucas transacoes, nao usaremos no cluster.
+
+### Relationship between types of expenses
+
+```{r}
+category_features2 <-  db_transactions %>% 
+  filter(type == 'expense', !(extra_fields_category_0 %in% c("Transfer", "Payment"))) %>% 
+  select(user_id, extra_fields_category_0, amount, date) %>% 
+  filter(!is.na(extra_fields_category_0)) %>% 
+  mutate(
+    date = as.Date(date),
+  ) %>% 
+  group_by(user_id, date, extra_fields_category_0) %>% 
+  summarise(
+    n_transactions = n(),
+    amount = sum(abs(amount))
+  ) %>% 
+  group_by(user_id, extra_fields_category_0) %>% 
+  summarise(
+    n_transactions = sum(n_transactions),
+    amount = sum(amount)
+  ) %>% 
+  ungroup() %>% 
+  mutate(amount_mean = amount/n_transactions) %>% 
+  pivot_wider(names_from = extra_fields_category_0, values_from = c(n_transactions, amount, amount_mean)) %>% 
+  janitor::clean_names() %>% 
+  mutate_if(is.integer, as.numeric) %>% 
+  mutate_if(is.numeric, ~if_else(is.na(.), 0, .))
+
+
+cor_db <- category_features2 %>% 
+  select_at(vars(starts_with('amount_mean'))) %>% 
+  cor()
+
+corrplot(cor_db,method = 'number', type="upper", order="hclust", hclust.method = 'average')  
+  
+```
+
+# Clustering
+
+# Notes
+
+# Conclusion
