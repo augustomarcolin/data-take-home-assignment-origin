@@ -16,10 +16,40 @@ db_transactions <- readRDS('data/processed/transaction_db.RDS')
 
 rfm_type_features <- group_rfm_variables(db_transactions)
 
-#---- category_features ----
+#---- category_features expense----
 
+# amount and number transactions with one category
 
 category_features1 <- db_transactions %>% 
+  filter(type == 'expense') %>% 
+  select(user_id, extra_fields_category_0, amount, date) %>% 
+  filter(!is.na(extra_fields_category_0)) %>% 
+  mutate(
+    date = as.Date(date),
+  ) %>% 
+  group_by(user_id, date, extra_fields_category_0) %>% 
+  summarise(
+    n_transactions = n(),
+    amount = sum(abs(amount))
+  ) %>% 
+  group_by(user_id, extra_fields_category_0) %>% 
+  summarise(
+    n_transactions = sum(n_transactions),
+    transactions_amount = sum(amount)
+  ) %>% 
+  ungroup() %>% 
+  mutate(transactions_amount_mean = transactions_amount/n_transactions) %>% 
+  pivot_wider(names_from = extra_fields_category_0, values_from = c(n_transactions, transactions_amount, transactions_amount_mean)) %>% 
+  janitor::clean_names() %>% 
+  mutate_if(is.integer, as.numeric) %>% 
+  mutate_if(is.numeric, ~if_else(is.na(.), 0, .))
+
+
+
+# amount and number transactions combining two categories 
+
+category_features2 <- db_transactions %>% 
+  filter(type == 'expense') %>% 
   select(user_id, extra_fields_category_0, extra_fields_category_1, amount, date) %>% 
   filter(!is.na(extra_fields_category_0)) %>% 
   mutate(
@@ -42,30 +72,6 @@ category_features1 <- db_transactions %>%
   janitor::clean_names() %>% 
   mutate_if(is.integer, as.numeric) %>% 
   mutate_if(is.numeric, ~if_else(is.na(.), 0, .)) 
-
-
-category_features2 <- db_transactions %>% 
-  select(user_id, extra_fields_category_0, amount, date) %>% 
-  filter(!is.na(extra_fields_category_0)) %>% 
-  mutate(
-    date = as.Date(date),
-  ) %>% 
-  group_by(user_id, date, extra_fields_category_0) %>% 
-  summarise(
-    n_transactions = n(),
-    amount = sum(abs(amount))
-  ) %>% 
-  group_by(user_id, extra_fields_category_0) %>% 
-  summarise(
-    n_transactions = sum(n_transactions),
-    amount = sum(amount)
-  ) %>% 
-  ungroup() %>% 
-  mutate(amount_mean = amount/n_transactions) %>% 
-  pivot_wider(names_from = extra_fields_category_0, values_from = c(n_transactions, amount, amount_mean)) %>% 
-  janitor::clean_names() %>% 
-  mutate_if(is.integer, as.numeric) %>% 
-  mutate_if(is.numeric, ~if_else(is.na(.), 0, .))
 
 
 #---- payment features ----
@@ -92,7 +98,7 @@ db_train <- db_users %>%
     by = c("id")
   ) %>% 
   left_join(
-    category_features2,
+    category_features1,
     by = c("id" = 'user_id'),
     suffix = c("", "cat")
   ) %>% 
