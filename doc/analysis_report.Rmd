@@ -15,7 +15,7 @@ library(forcats)
 library(testthat)
 library(skimr)
 library(ggplot2)
-library(usmap)
+library(cowplot)
 library(leaflet)
 library(knitr)
 library(kableExtra)
@@ -49,7 +49,10 @@ db_train <- readRDS('../data/processed/db_train.RDS')
 
 # Overview
 
-# Introduction
+This report has the goal of show all process developed to analyze the data challenge proposed by the Origin Financial team. It's organized in four main sessions:
+
+The first session will be `Engineering Raw Data` where I'will describe all the steps needed to clean raw data. The following step, `Exploratory Data Analysis` has some descriptive analysis about the data. At this point I'll guide my analysis to data clustering based on RFM (Recency Frequency and Monetary). After that I'll show the clustering analysis at session `Clustering` and some insigths based on it. Finally, I have some notes and future ideas further some conclusion about the challenge.
+
 
 # Engineering Raw Data
 
@@ -61,38 +64,48 @@ Before starting the data analysis, let's do a quickly review at available data s
 glimpse(raw_users_db)
 ```
 
-In a quick overview, it's possibly to note that variable `created_at` and `date_of_birth` should be modified to timestamp and date. Also, we can note that all missing data are represented by empty space and it will be replaced by `NA`.
+In a quick overview, it's possibly to note that variable `created_at` and `date_of_birth` should be modified to timestamp and date, respectivily. Also, we can note that all missing data are represented by empty character space and it will be replaced by `NA`.
 
-The variables `state` and `city` has some strange characters like this: `<img src='#' onerror=alert('xss') />` this strange behavior probably came from a css operator and it will be replaced by `NA`.
+The variables `state` and `city` has some strange characters like this: `<img src='#' onerror=alert('xss') />` I presume that this behavior is caused by a css operator and it'll be replaced by `NA`.
+
+The variable `id` it's lowercase, while in the transactions data it's uppercased, so it'll be replaced by uppercase.
 
 ## Transactions
 
 ```{r}
 glimpse(raw_transaction_db)
 ```
+The transaction data doesn't so much engineering to do. It's just change timestamp and date types and replace empty spaces by `NA`. I also, replaced `.` by `_` in some variable names.
 
 # Exploratory Data Analysis
+
+The exploratory data analysis it's divides
 
 ```{r}
 skim(db_users)
 ```
+At this simple description about the dataset it's possibly to note that age has a outlier that will be replaced by `NA`. Also, the great number of missing data in the variable gender, turning it almost useless in the data analysis.
 
--   falar sobre o outlier na data
--   falar sobre o número de missing no gender
 
 ## Univariate Analysis
 
 ### Age
 
+The customers age distribution are concentraded between the range 30 - 50 years as shown bellow:
+
 ```{r}
 db_users %>% 
   filter(age_at <= 100) %>% 
   ggplot(aes(x = age_at)) +
-  geom_density(fill = '#ed2f5b', alpha = 0.6) +
+  geom_histogram(fill = '#ed2f5b', alpha = 0.6) +
   theme_bw()
 ```
 
+Maybe this variable could bea good one to use in the clustering process.
+
 ### State
+
+The geographical distribuiton of customer are really dense in the California State (31%) followed by MD(11.1%) add NC/NY tied with (7.8%). It's important to note that more than 22% of the customers has no state information.
 
 ```{r}
 
@@ -131,11 +144,10 @@ leaflet() %>%
 
 ```
 
--   talk about: more than half of the sample is from CA or has no available state
 
 ## Users Transactions
 
--   talk that we have just 84 customer with transactions
+Looking to the user transactions, I note a tiny number of different customers, just 84. Some of them (almost 20%) has more than one account, but as we expecte to analysi customer behavior over account behaviour I'll treat them as the same customer.
 
 ```{r}
 db_transactions %>% 
@@ -151,7 +163,15 @@ db_transactions %>%
 
 ```
 
--   falar que quase 20% dos customers com transacoes tem mais de uma conta, porem para as analises vou assumir apenas o id do customer
+At this point it's really important to say that just 84 customers to do the cluster analysis could be a problem for a bunch of reasos as like:
+
+- Some algorithms won't provide robust results under small samples
+
+- The cluster interpretation could be a little messy.
+
+- The pattern recognition it's hard to do
+
+Sad that i'll develop my analysis and won't
 
 ### Type of transacions
 
@@ -170,16 +190,57 @@ db_transactions %>%
   theme_bw()
 ```
 
--   falar que tem uma mistura de gastos e salários com transferências e que isso deveria ser visto apartado
--   começar a falar da ideia do rfm
+
+Analysing the type of transactions we can note that has a mix of too different transactions. Income, Expense and Transfer, as I'll show in the next steps, it will be treated separatelly to do the clustering analysis.
+
+
+```{r}
+db_transactions %>% 
+  mutate(amount = abs(amount)) %>% 
+  ggplot(aes(x = amount, fill = type)) +
+  geom_histogram() +
+  facet_wrap(~type, scales = 'free') +
+  theme_bw()
+
+```
+
+The amount money transactions types has a strange behaviour having low variety of values. Transfer for example has just the value 25. It's something that could affect the behavior of clusterig analysis.
+
+```{r}
+db_transactions %>% 
+  ungroup() %>% 
+  mutate(
+    date = as.Date(date)
+    ) %>% 
+  group_by(date, type) %>% 
+  summarise(
+    n_transactions = n(),
+    amount = sum(abs(amount))
+  ) %>% 
+  #filter(amount <= quantile(.$amount, 0.99), amount >= quantile(.$amount, 0.01)) %>% 
+  pivot_longer(cols = c(-date,-type)) %>% 
+  ggplot(aes(x = date, y = value, color = type)) +
+  geom_line() +
+  facet_wrap(~name, scales = 'free')+
+  theme_bw()
+
+```
+
+Looking to number and amount of transactions per day by expenses, transfer and income it's possibly to note that the days 2021-06-15 (income and expense) and 2021-06-16 (income) has a lot more transactions compare to other days. Expense category it's almost 10x the median for the period and for income it's mre than 10x.
+
+I don't know if this strange behavior comes from a selection bias or if this is from the data. I'll presume that this behavior is a normal one.
+
 
 ### Transactions Category
+
+Looking the transactions category we can note that we have a lot of missing ones, but part of that is caused by income transactions. 
 
 ```{r}
 db_transactions %>% 
   select(starts_with("extra_fields_category")) %>% 
   group_by_all() %>% 
   count(sort = T)  %>% 
+  ungroup() %>% 
   mutate(
     perc = round(n/sum(n), digits = 4) * 100
   ) %>% 
@@ -188,7 +249,12 @@ db_transactions %>%
 
 ```
 
--   Falar um pouco sobre as categorias e que sera explorado um pouco mais na descritiva com a quantidade de transacoes e amount
+Almost 20% of transactions came from travel category, divided into taxi (Uber) and Airlines and Aviation.
+
+Food and drink represent 25% divided in restaurants like coffe shop and fast foods.
+
+Also has some transactions repesented by recreation and shops ans some transfer between accounts
+
 
 ### Merchant Name
 
@@ -212,7 +278,7 @@ db_transactions %>%
 
 ```
 
-- Falar que temos os dados apenas para expense
+Looking deeper to the expense types and merchant names, we can see at the top Uber, McDonalds, starbaucks and so on.
 
 ### Channel Transactions
 
@@ -233,7 +299,7 @@ db_transactions %>%
   theme_bw()
 ```
 
-- Falar que temos os dados apenas para expense
+The preferencial channel to expenses is in store(73%). Would be interesting if we had some information abou online channels as app payment, website shop e etc.
 
 ### Payment Methods
 
@@ -253,22 +319,24 @@ db_transactions %>%
 
 ```
 
-- just 4% of transactions with this data, it's almost useless
+By payment methods we have just 4% of transactions with this data, it's almost useless to the analysis.
 
 ## RFM Transformation
 
-- Analisando o problema e vendo as possibilidades de cluster, optei pela transdormação dos dados trnsacionais para o modo recency, frequencia e monetary value. 
+After this exploratory analysis about variables and looking to a solution to clustering problem . I decided transform the transactional data into recency frequency and monetary value for the tree types of transactions: Expense, Income and Transfer.
 
-A transformação foi feita pensando em duas abordagens... RFM dos tipos de transacao (expense, income, transfer) e RFM das categorias de expense.
-
-Depois da transformação dos dados transacionais, é hora de juntar com os dados dos usuarios.
-
-Ao final teremos um dataset com 84 customers e 36 variaveis e temos algumas ressalvas.
+After this transformation our dataset looks like this:
 
 ```{r}
 glimpse(db_train)
 ```
+
+Just 84 datapoints (customers) and 33 variables. I drop the recency variables because I tougth that itsn't the goal of the analysis explore "how much time the customer doens't have any transaction".
+
 ### Expense vs Income
+
+Firstly, analysing the behavior of the amount mean of transactions in expenses and income we can note some behaviours.
+
 ```{r}
 db_train %>% 
   ggplot(aes(x = amount_mean_expense, y = amount_mean_income)) + 
@@ -277,11 +345,14 @@ db_train %>%
 
 ```
 
-Aqui podemos notar que tem customer com alta renda e pouco gasto, sem renda e sem gasto, renda media e gasto medio e gasto alto e renda media. isso já é uma pista pro nosso cluster.
+Note that some customer has high income mean and low expense mean, while we have others that expend more than earn. This is a good expoiler about the clustering.
 
-também temos um outlier nos gastos
+It's important to note the outlier that expend much more than earn, I will keep this customer in analysis because it's a different behaviour that could be more representative if we have more data.
 
 ### Expense Vs Income Vs Age
+
+Adding the variable age to our analysis, it's possibly to note that it doesn't affect the behavior of income and expense, so this variable wouldn't be useful in the cluster analysis.
+
 ```{r}
 db_train %>%
   select(age_at, amount_mean_income, amount_mean_expense) %>% 
@@ -293,10 +364,10 @@ db_train %>%
 
 ```
 
-A idade nao parece influenciar nos tipos de transacoes na base, quanto a salario e despesas.
-
 
 ### Expense vs Income vs Transfer
+
+Transfer mean amount it's another variable that doesn't affect the income and expense. As shown bellow:
 
 ```{r}
 db_train %>%
@@ -309,9 +380,12 @@ db_train %>%
 
 ```
 
-Os valores transferidos nao parecem ter relacao com os gastos e com a renda, alem de terem poucas transacoes, nao usaremos no cluster.
 
-### Relationship between types of expenses
+### Relationship between categorys of expenses
+
+Looking to the correlation between category expenses it's possibly to note that every transaction has a high correlation. This analysis isn't so conclusive because we have just 13 customers with expenses categories. 
+
+Also, I will try to do a cluster with this datapoints, the main ideia is to show my way of thinking the problem than try to interpret something. Because just 13 customer isn't enough data to any analysis.
 
 ```{r}
 category_features2 <-  db_transactions %>% 
@@ -349,6 +423,12 @@ corrplot(cor_db,method = 'number', type="upper", order="hclust", hclust.method =
 
 # Clustering
 
+At the clustering analysis my goal is to made two type of clusters, one based on incomes and expenses and another one based on the categories of expense. I think this way could give us some conclusions about the data.
+
+It's important to say that I use just one method of clustering called kmeans, it's based on centroid distances. This choice was made because the datasets has few datapoints and I would like to maintain the analysis as simple as possibly.
+
+At the beggining of very clustering I will do a analysis to determine the optimal number of cluster, after that I will run the cluster analysis and made some insigths about the clusters responses.
+
 ### Expense vs Income
 
 ```{r}
@@ -364,6 +444,13 @@ n_cluster_expense_income <- map(.x = c("silhouette", "wss", "gap_stat"),
                          kmeans,
                          .x)
   )
+
+plot_grid(n_cluster_expense_income[[1]] + labs(title = "Silhouette"),
+          n_cluster_expense_income[[2]] + labs(title = "Elbow"),
+          n_cluster_expense_income[[3]] + labs(title = "Gap"), nrow = 1)
+```
+
+```{r}
 
 #---- * clusters ----
 cluster_expense_income <- db_train_pad %>% select(amount_mean_income, amount_mean_expense) %>% 
@@ -397,6 +484,13 @@ n_cluster_expense_income2 <-   map(.x = c("silhouette", "wss", "gap_stat"),
                          kmeans,
                          .x)
   )
+
+plot_grid(n_cluster_expense_income2[[1]] + labs(title = "Silhouette"),
+          n_cluster_expense_income2[[2]] + labs(title = "Elbow"),
+          n_cluster_expense_income2[[3]] + labs(title = "Gap"), nrow = 1)
+``` 
+
+```{r}
 
 #---- * clusters ----
 cluster_expense_income2 <- db_train %>% 
@@ -449,6 +543,13 @@ n_cluster_types <-
                          .x)
   )
 
+plot_grid(n_cluster_types[[1]] + labs(title = "Silhouette"),
+          n_cluster_types[[2]] + labs(title = "Elbow"),
+          n_cluster_types[[3]] + labs(title = "Gap"), nrow = 1)
+
+```
+
+```{r}
 #---- * clusters ----
 
 cluster_types <- db_cluster_types_expense %>% 
@@ -470,7 +571,7 @@ db_expense_types %>%
   group_by(cluster) %>% 
   summarise_all(
     list(mean = mean)
-  ) %>% View()
+  ) 
 
 ```
 
@@ -503,7 +604,13 @@ n_cluster_types_freq <-
                          .x)
   )
 
-n_cluster_types_freq[[3]]
+plot_grid(n_cluster_types_freq[[1]] + labs(title = "Silhouette"),
+          n_cluster_types_freq[[2]] + labs(title = "Elbow"),
+          n_cluster_types_freq[[3]] + labs(title = "Gap"), nrow = 1)
+
+```
+
+```{r}
 
 #---- * clusters ----
 
@@ -526,11 +633,20 @@ db_expense_types_freq %>%
   group_by(cluster) %>% 
   summarise_all(
     list(mean = mean)
-  ) %>% View()
+  ) 
 
 ```
 
 
+# Conclusion
+
+
 # Notes
 
-# Conclusion
+This take home assignment was very challenging because it's a open problem and I could have a lot of different ways to do the analysis, My choice was explore the RFM customer behavior and at the end just FM. 
+
+
+I choose to explore just one method of clustering to made things simple. But in a work day problem I would test some other method like hierarchical clustering and principally density based clustering like Dbscan and Hdbscan, because this methods has the advantage of not classifing some data points with the ideia of "Not all customers belongs a cluster".
+
+
+I would like to thank the Origin team for dedicate time to elaborate this problem and give me the chance show my work.
