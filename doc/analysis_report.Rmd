@@ -52,14 +52,13 @@ db_train <- readRDS('../data/processed/db_train.RDS')
 
 # Overview
 
-This report has the goal of show all process developed to analyze the data challenge proposed by the Origin Financial team. It's organized in four main sessions:
+This report aims to show all processes developed to analyze the data challenge proposed by the Origin Financial team. It's organized into four main sessions:
 
-The first session will be `Engineering Raw Data` where I'll describe all the steps needed to clean raw data. The following step, `Exploratory Data Analysis` has some descriptive analysis about the data. At this point I'll guide my analysis to data clustering based on RFM (Recency Frequency and Monetary). After that I'll show the clustering analysis at session `Clustering` and some insights based on it. Finally, I have some notes and future ideas further some conclusion about the challenge.
-
+The first session will be `Engineering Raw Data` where I'll describe all the steps needed to clean raw data. The following step, `Exploratory Data Analysis` has some descriptive analysis about the data. At this point, I'll guide my analysis to data clustering based on RFM (Recency Frequency and Monetary). After that, I'll show the clustering analysis at session `Clustering` and some insights based on it. Finally, I have some notes and future ideas further some conclusions about the challenge.
 
 # Engineering Raw Data
 
-Before starting the data analysis, let's do a quickly review at available data sets and raise needs of pre-engineering.
+Before starting the data analysis, let's do a quick review of available data sets and raise the need for pre-engineering.
 
 ## Customers
 
@@ -67,9 +66,9 @@ Before starting the data analysis, let's do a quickly review at available data s
 glimpse(raw_users_db)
 ```
 
-In a quick overview, it's possibly to note that variable `created_at` and `date_of_birth` should be modified to timestamp and date, respectively. Also, we can note that all missing data are represented by empty character space and it will be replaced by `NA`.
+In a quick overview, it's possible to note that variables `created_at` and `date_of_birth` should be modified to timestamp and date, respectively. Also, we can note that all missing data are represented by empty character space and it will be replaced by `NA`.
 
-The variables `state` and `city` has some strange characters like this: `<img src='#' onerror=alert('xss') />` I presume that this behavior is caused by a css operator and it'll be replaced by `NA`.
+The variables `state` and `city` have some strange characters like this: `<img src='#' onerror=alert('xss') />` I presume that this behavior is caused by a css operator and it'll be replaced by `NA`.
 
 The variable `id` it's lowercase, while in the transactions data it's upper-cased, so it'll be replaced by uppercase.
 
@@ -78,24 +77,26 @@ The variable `id` it's lowercase, while in the transactions data it's upper-case
 ```{r}
 glimpse(raw_transaction_db)
 ```
-The transaction data doesn't so much engineering to do. It's just change timestamp and date types and replace empty spaces by `NA`. I also, replaced `.` by `_` in some variable names.
+
+The transaction data doesn't have so much engineer to do. It’s just changed timestamp and date types and replace empty spaces with `NA`. I also, replaced `.` with `_` in some variable names.
 
 # Exploratory Data Analysis
 
-The exploratory data analysis it's divides
+The exploratory data analysis it's divides into univariate analysis before RFM transformation and more insightful after that.
 
 ```{r}
 skim(db_users) %>% 
   knit_print()
 ```
-At this simple description about the data set it's possibly to note that age has a outlier that will be replaced by `NA`. Also, the great number of missing data in the variable gender, turning it almost useless in the data analysis.
+
+At this simple description of the data set, it's possible to note that age has an outlier that will be replaced by `NA`. Also, the great number of missing data in the variable gender, turning it almost useless in the data analysis.
 
 
 ## Univariate Analysis
 
 ### Age
 
-The customers age distribution are concentraded between the range 30 - 50 years as shown bellow:
+The customer's age distribution is concentrated between the range 30 - 50 years as shown below:
 
 ```{r}
 db_users %>% 
@@ -105,11 +106,12 @@ db_users %>%
   theme_bw()
 ```
 
-Maybe this variable could bea good one to use in the clustering process.
+Maybe this variable could be a good one to use in the clustering process.
 
 ### State
 
-The geographical distribuiton of customer are really dense in the California State (31%) followed by MD(11.1%) add NC/NY tied with (7.8%). It's important to note that more than 22% of the customers has no state information.
+The geographical distribution of customers is dense in the California State (31%) followed by MD(11.1%) add NC/NY tied with (7.8%). It's important to note that more than 22% of the customers have no state information.
+
 
 ```{r}
 
@@ -151,7 +153,7 @@ leaflet() %>%
 
 ## Users Transactions
 
-Looking to the user transactions, I note a tiny number of different customers, just 84. Some of them (almost 20%) has more than one account, but as we expecte to analysi customer behavior over account behaviour I'll treat them as the same customer.
+Looking at the user transactions, I note a tiny number of different customers, just 84. Some of them (almost 20%) have more than one account, but as we expected to analyze customer behavior over account behavior I'll treat them as the same customer.
 
 ```{r}
 db_transactions %>% 
@@ -175,7 +177,7 @@ At this point it's really important to say that just 84 customers to do the clus
 
 - The pattern recognition it's hard to do
 
-Sad that I'll develop my analysis and won't
+Said that I'll develop my analysis and won't concern about it.
 
 ### Type of transacions
 
@@ -194,8 +196,7 @@ db_transactions %>%
   theme_bw()
 ```
 
-
-Analysing the type of transactions we can note that has a mix of too different transactions. Income, Expense and Transfer, as I'll show in the next steps, it will be treated separatelly to do the clustering analysis.
+Analyzing the type of transactions we can note that has a mix of three different transactions. Income, Expense, and Transfer, as I'll show in the next steps, will be treated separately to do the clustering analysis.
 
 
 ```{r}
@@ -208,7 +209,7 @@ db_transactions %>%
 
 ```
 
-The amount money transactions types has a strange behaviour having low variety of values. Transfer for example has just the value 25. It's something that could affect the behavior of clusterig analysis.
+The amount of money transactions types have a strange behavior having a low variety of values. Transfer for example has just the value 25. It's something that could affect the behavior of clustering analysis.
 
 ```{r}
 db_transactions %>% 
@@ -230,14 +231,14 @@ db_transactions %>%
 
 ```
 
-Looking to number and amount of transactions per day by expenses, transfer and income it's possibly to note that the days 2021-06-15 (income and expense) and 2021-06-16 (income) has a lot more transactions compare to other days. Expense category it's almost 10x the median for the period and for income it's mre than 10x.
+Looking at the number and amount of transactions per day by expenses, transfer and income it's possible to note that the days 2021-06-15 (income and expense) and 2021-06-16 (income) has a lot more transactions compared to other days. The expense category it's almost 10x the median for the period and the income it's more than 10x.
 
 I don't know if this strange behavior comes from a selection bias or if this is from the data. I'll presume that this behavior is a normal one.
 
 
 ### Transactions Category
 
-Looking the transactions category we can note that we have a lot of missing ones, but part of that is caused by income transactions. 
+Looking at the transactions category we can note that we have a lot of missing ones, but part of that is caused by income transactions. 
 
 ```{r}
 db_transactions %>% 
@@ -253,11 +254,11 @@ db_transactions %>%
 
 ```
 
-Almost 20% of transactions came from travel category, divided into taxi (Uber) and Airlines and Aviation.
+Almost 20% of transactions came from the travel category, divided into taxi (Uber) and Airline and Aviation.
 
-Food and drink represent 25% divided in restaurants like coffe shop and fast foods.
+Food and drink represent 25% divided in restaurants like coffee shops and fast foods.
 
-Also has some transactions repesented by recreation and shops ans some transfer between accounts
+Also has some transactions represented by recreation and shops and some transfer between accounts
 
 
 ### Merchant Name
@@ -282,7 +283,7 @@ db_transactions %>%
 
 ```
 
-Looking deeper to the expense types and merchant names, we can see at the top Uber, McDonalds, starbaucks and so on.
+Looking deeper at the expense types and merchant names, we can see at the top Uber, McDonald’s, Starbucks, and so on.
 
 ### Channel Transactions
 
@@ -303,7 +304,8 @@ db_transactions %>%
   theme_bw()
 ```
 
-The preferencial channel to expenses is in store(73%). Would be interesting if we had some information abou online channels as app payment, website shop e etc.
+The preferential channel to expenses is in-store (73%). Would be interesting if we had some information about online channels as app payment, website shop, etc.
+
 
 ### Payment Methods
 
@@ -327,7 +329,7 @@ By payment methods we have just 4% of transactions with this data, it's almost u
 
 ## RFM Transformation
 
-After this exploratory analysis about variables and looking to a solution to clustering problem . I decided transform the transactional data into recency frequency and monetary value for the tree types of transactions: Expense, Income and Transfer.
+After this exploratory analysis about variables and looking to a solution to the clustering problem. I decided to transform the transactional data into recency frequency and monetary value for the three types of transactions: Expense, Income, and Transfer.
 
 After this transformation our dataset looks like this:
 
@@ -335,11 +337,12 @@ After this transformation our dataset looks like this:
 glimpse(db_train)
 ```
 
-Just 84 data points (customers) and 33 variables. I drop the recency variables because I think that isn't the goal of the analysis explore "how much time the customer doesn't have any transaction".
+Just 84 data points (customers) and 33 variables. I drop the recency variables because I think that isn't the goal of the analysis to explore "how much time the customer doesn't have any transaction".
+
 
 ### Expense vs Income
 
-Firstly, analyzing the behavior of the amount mean of transactions in expenses and income we can note some behaviors.
+Firstly, analyzing the behavior of the average amount of transactions in expenses and income we can note some behaviors.
 
 ```{r}
 db_train %>% 
@@ -349,13 +352,13 @@ db_train %>%
 
 ```
 
-Note that some customer has high income mean and low expense mean, while we have others that expend more than earn. This is a good spoiler about the clustering.
+Note that some customer has high average income and low average expense, while we have others that expend more than earn. This is a good spoiler about the clustering.
 
-It's important to note the outlier that expend much more than earn, I will keep this customer in analysis because it's a different behavior that could be more representative if we have more data.
+It's important to note the outlier that expends much more than earn, I will keep this customer in analysis because it's a different behavior that could be more representative if we have more data.
 
 ### Expense Vs Income Vs Age
 
-Adding the variable age to our analysis, it's possibly to note that it doesn't affect the behavior of income and expense, so this variable wouldn't be useful in the cluster analysis.
+Adding the variable age to our analysis, it's possible to note that it doesn't affect the behavior of income and expense, so this variable wouldn't be useful in the cluster analysis.
 
 ```{r}
 db_train %>%
@@ -371,7 +374,7 @@ db_train %>%
 
 ### Expense vs Income vs Transfer
 
-Transfer mean amount it's another variable that doesn't affect the income and expense. As shown bellow:
+Transfer average amount it's another variable that doesn't affect the income and expense. As shown below:
 
 ```{r}
 db_train %>%
@@ -387,9 +390,10 @@ db_train %>%
 
 ### Relationship between categorys of expenses
 
-Looking to the correlation between category expenses it's possibly to note that every transaction has a high correlation. This analysis isn't so conclusive because we have just 13 customers with expenses categories. 
+Looking at the correlation between category expenses it's possible to note that every transaction has a high correlation. This analysis isn't so conclusive because we have just 13 customers with expenses categories. 
 
-Also, I will try to do a cluster with this datapoints, the main ideia is to show my way of thinking the problem than try to interpret something. Because just 13 customer isn't enough data to any analysis.
+Also, I will try to do a cluster with these data points, the main idea is to show my way of thinking about the problem then try to interpret something. Because just 13 customers isn't enough data for any analysis.
+
 
 ```{r}
 category_features2 <-  db_transactions %>% 
@@ -427,17 +431,17 @@ corrplot(cor_db,method = 'number', type="upper", order="hclust", hclust.method =
 
 # Clustering
 
-At the clustering analysis my goal is to made two type of clusters, one based on incomes and expenses and another one based on the categories of expense. I think this way could give us some conclusions about the data.
+At the clustering analysis, my goal is to make two types of clusters, one based on incomes and expenses and another one based on the categories of expense. I think this way could give us some conclusions about the data.
 
-It's important to say that I use just one method of clustering called kmeans, it's based on centroid distances. This choice was made because the data sets has few data points and I would like to maintain the analysis as simple as possibly.
+It's important to say that I use just one method of clustering called kmeans, it's based on centroid distances. This choice was made because the data sets have few data points and I would like to maintain the analysis as simple as possible.
 
-At the beginning of every clustering I will do a analysis to determine the optimal number of cluster, after that the cluster analysis will be made and also insights about the clusters responses.
+At the beginning of every clustering, I will analyze to determine the optimal number of clusters, after that the cluster analysis will be made, and also insights about the clusters’ responses.
 
-To determine de optimal number of cluster I run tree methods:
+To determine de optimal number of clusters I run tree methods:
 
-- Elbow method - The idea behind this method is compute the within-cluster variation to different number of clusters and minimize it.
+- Elbow method - The idea behind this method is to compute the within-cluster variation to different number of clusters and minimize it.
 
-- Silhouette Method - It measures the quality of clustering based on the average similarity of each point to to its own cluster compared to other clusters.
+- Silhouette Method - It measures the quality of clustering based on the average similarity of each point to its own cluster compared to other clusters.
 
 - GAP method - The gap statistic compares the total intracluster variation for different values of k with their expected values under null reference distribution of the data (i.e. a distribution with no obvious clustering).
 
@@ -513,7 +517,7 @@ db_expense_income %>%
   kable_styling()
 ```
 
-Note that using 6 clusters we have few customers in some clusters and it can cause the suggestion of the methods, because the distance between members of cluster has more chance to be tiny.
+Note that using 6 clusters we have few customers in some clusters and it can cause the suggestion of the methods because the distance between members of cluster has more chance to be tiny.
 
 
 ### Expense vs Income vs Freq Expense
@@ -537,7 +541,7 @@ plot_grid(n_cluster_expense_income2[[1]] + labs(title = "Silhouette"),
           n_cluster_expense_income2[[2]] + labs(title = "Elbow"),
           n_cluster_expense_income2[[3]] + labs(title = "Gap"), nrow = 1)
 ``` 
-The methods indicates 5 or 6 clusters, I used 5 in the analysis:
+The methods indicate 5 or 6 clusters, I used 5 in the analysis:
 
 ```{r}
 
@@ -568,23 +572,23 @@ db_expense_income2 %>%
 ```
 Note the interpretation about the clusters:
 
-* 1 - Customers with medium income, lot of expense transactions and medium amount average expense;
+* 1 - Customers with medium income, lot of expense transactions, and medium amount average expense;
 
 * 2 - Customers with no amount expense;
 
-* 3 - Customers with medium income, medium transactions expense and medium amount expense;
+* 3 - Customers with medium income, medium transactions expense, and medium amount expense;
 
-* 4 - Outliers, the customer that has really high amount expense in few transactions and has no income;
+* 4 - Outliers, the customer that has high amount expense in few transactions and has no income;
 
 * 5 - Customer with high income and low average amount expense with medium transactions.
 
-At this point we have some good interpretation about users transactions. Let's see about expenses categories.
+At this point, we have some good interpretations about users transactions. Let's see about expenses categories.
 
 ## Category Expense
 
 We have just 18 customers with expenses, so it's hard to extract some helpful interpretation or relationship in the data. But let's look to clustering methods.
 
-At this point I use the relative amount mean expend to the total amount. The same analogy to the frequency.
+At this point, I use the relative amount mean expend to the total amount. The same analogy to the frequency.
 
 ### Amount Type Expense
 
@@ -617,7 +621,7 @@ plot_grid(n_cluster_types[[1]] + labs(title = "Silhouette"),
 
 ```
 
-The methods indicates just 2 clusters relatives to the amount mean expense in each category.
+The methods indicate just 2 clusters relatives to the amount mean expense in each category.
 
 
 ```{r}
@@ -651,7 +655,7 @@ db_expense_types %>%
 
 ```
 
-The only difference between groups looks that the Group 2 expends more with transfers and the group one with food and drink. But nothing too conclusive.
+The only difference between groups looks that Group 2 expends more on transfers and group one on food and drink. But nothing too conclusive.
 
 ### Frequency Type Expense
 
@@ -686,7 +690,7 @@ plot_grid(n_cluster_types_freq[[1]] + labs(title = "Silhouette"),
 
 ```
 
-The methods indicates just 2 clusters relatives to the amount mean expense in each category.
+The methods indicate just 2 clusters relatives to the amount mean expense in each category.
 
 ```{r}
 
@@ -718,20 +722,21 @@ db_expense_types_freq %>%
 
 ```
 
-There aren't any conclusion about the groups, the expenses are really similar.
+There aren't any conclusions about the groups, the expenses are really similar.
 
 # Conclusion
 
-Our goal with this analysis was to find some group of customers that has similar behavior in the transaction data. I led the analysis using the approach o frequency and monetary value expenses, incomes and transfers. Initially we had 803 customers to cluster, after the join between data sets left just 84 customer with transaction. 
+Our goal with this analysis was to find some group of customers that has similar behavior in the transaction data. I led the analysis using the approach o frequency and monetary value expenses, incomes, and transfers. Initially, we had 803 customers to cluster after they join between data sets left just 84 customers with the transaction. 
 
-Based on it, I achieve some good results in clustering customer using income and expenses. A couple of behaviors were detected. Unfortunately using the expenses data there was no conclusion about the groups, it's important stand out that we had just 18 customers, something that makes hard to reach a closure.
+Based on it, I achieve some good results in clustering customers using income and expenses. A couple of behaviors were detected. Unfortunately using the expenses data there was no conclusion about the groups, it's an important stand out that we had just 18 customers, something that makes it hard to reach closure.
+
 
 # Notes
 
-This take home assignment was very challenging because it's a open problem and I could have a lot of different ways to do the analysis, My choice was explore the RFM customer behavior and at the end just FM. 
+This take-home assignment was very challenging because it's an open problem and I could have a lot of different ways to do the analysis, My choice was to explore the RFM customer behavior and in the end just FM. 
 
 
-I choose to explore just one method of clustering to made things simple. But in a work day problem I would test some other method like hierarchical clustering and principally density based clustering like Dbscan and Hdbscan, because this methods has the advantage of not classifying some data points with the idea of "Not all customers belongs a cluster".
+I choose to explore just one method of clustering to make things simple. But in a workday problem, I would test some other methods like hierarchical clustering and principally density-based clustering like Dbscan and Hdbscan, because this method has the advantage of not classifying some data points with the idea of "Not all customers belongs a cluster".
 
 
-I would like to thank the Origin team for dedicate time to elaborate this problem and give me the chance show my work.
+I would like to thank the Origin team for dedicate time to elaborate on this problem and give me the chance to show my work.
